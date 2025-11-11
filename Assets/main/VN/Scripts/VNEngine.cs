@@ -1,18 +1,24 @@
-using System;
+Ôªøusing System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Text.RegularExpressions;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace VN
 {
     [DisallowMultipleComponent]
-    public partial class VNEngine : MonoBehaviour
+    public class VNEngine : MonoBehaviour
     {
         [Header("UI")]
         [SerializeField] private Image bgImage;
         [SerializeField] private RectTransform charaLayer;
+        [SerializeField] private Image charLeft;
+        [SerializeField] private Image charCenter;
+        [SerializeField] private Image charRight;
         [SerializeField] private TMP_Text nameText;
         [SerializeField] private TMP_Text bodyText;
         [SerializeField] private RectTransform choicesPanel;
@@ -20,25 +26,55 @@ namespace VN
         [SerializeField, Range(0f, 0.2f)] private float typewriterSpeed = 0.02f;
 
         [Header("Dialogue UI Toggle")]
-        [SerializeField] private RectTransform dialoguePanel; // (πË∞Ê+¿Ã∏ß+∫ªπÆ)
-        [SerializeField] private TMP_Text centerText;         // ¡ﬂæ” ≈ÿΩ∫∆Æ
+        [SerializeField] private RectTransform dialoguePanel;
+        [SerializeField] private TMP_Text centerText;
+
+        [Header("Name Input (optional)")]
+        [SerializeField] private RectTransform nameInputPanel;
+        [SerializeField] private TMP_InputField nameInputField;
+        [SerializeField] private Button nameConfirmButton;
 
         [Header("Script")]
         [SerializeField] private VNScript scriptBehaviour;
         [SerializeField] private bool autoStart = true;
 
-        // ≥ª∫Œ ªÛ≈¬
+        // ===== Î≥ÄÏàò ÏπòÌôò =====
+        const string PP_PLAYER = "VN.Player";
+        readonly Dictionary<string, string> vars = new(StringComparer.OrdinalIgnoreCase)
+        {
+            { "Player", "ÌîåÎ†àÏù¥Ïñ¥" }
+        };
+        static readonly Regex VarToken = new(@"\{([A-Za-z0-9_]+)\}", RegexOptions.Compiled);
+
+        // ÎÇ¥Î∂Ä ÏÉÅÌÉú
         private bool clickRequested;
         private string lastChoiceId;
 
         void Awake()
         {
-            if (!scriptBehaviour)
-                Debug.LogError("scriptBehaviour∞° ∫ÒæÓ¿÷Ω¿¥œ¥Ÿ.");
+            if (PlayerPrefs.HasKey(PP_PLAYER))
+                vars["Player"] = PlayerPrefs.GetString(PP_PLAYER);
 
-            if (centerText) centerText.gameObject.SetActive(false);
+            if (!scriptBehaviour)
+                Debug.LogError("scriptBehaviourÍ∞Ä ÎπÑÏñ¥ÏûàÏäµÎãàÎã§.");
+
+            if (centerText)
+            {
+                centerText.gameObject.SetActive(false);
+                // Ï§ëÏïô ÌÖçÏä§Ìä∏Í∞Ä ÏûÖÎ†•ÏùÑ Í∞ÄÎ°úÎßâÏßÄ ÏïäÎèÑÎ°ù
+                centerText.raycastTarget = false;
+            }
             if (choicesPanel) choicesPanel.gameObject.SetActive(false);
             if (dialoguePanel) dialoguePanel.gameObject.SetActive(true);
+
+            if (nameInputPanel) nameInputPanel.gameObject.SetActive(false);
+
+            EnsurePortrait(ref charLeft, "CharLeft");
+            EnsurePortrait(ref charCenter, "CharCenter");
+            EnsurePortrait(ref charRight, "CharRight");
+            ShowPortrait(charLeft, false);
+            ShowPortrait(charCenter, false);
+            ShowPortrait(charRight, false);
         }
 
         void Start()
@@ -47,31 +83,33 @@ namespace VN
                 StartCoroutine(Run());
         }
 
-        public IEnumerator Run()
+        public IEnumerator Run() { yield return scriptBehaviour.Define(this); }
+
+        // ===== Î≥ÄÏàò API =====
+        public void SetPlayerName(string name)
         {
-            yield return scriptBehaviour.Define(this);
+            SetVar("Player", name);
+            PlayerPrefs.SetString(PP_PLAYER, name ?? "");
+            PlayerPrefs.Save();
         }
+        public void SetVar(string key, string value) => vars[key] = value ?? "";
+        public string GetVar(string key) => vars.TryGetValue(key, out var v) ? v : "";
 
-        // ===== ∞¯øÎ API =====
-
+        // ===== ÎåÄÏÇ¨ API =====
         public IEnumerator Say(string speaker, string message)
         {
             if (!string.IsNullOrEmpty(message) && message[0] == '@')
             {
-                if (TryProcessCommandLine(message, out var routine))
-                {
-                    if (routine != null) yield return routine;
-                    yield break;
-                }
+                if (TryProcessCommandLine(message, out var routine)) { if (routine != null) yield return routine; yield break; }
             }
 
             if (centerText) centerText.gameObject.SetActive(false);
             if (dialoguePanel) dialoguePanel.gameObject.SetActive(true);
 
-            if (nameText) nameText.text = speaker ?? string.Empty;
+            if (nameText) nameText.text = ExpandVars(speaker ?? string.Empty);
             if (bodyText)
             {
-                yield return Typewriter(bodyText, message ?? string.Empty);
+                yield return Typewriter(bodyText, ExpandVars(message ?? string.Empty));
                 yield return WaitForClick();
             }
         }
@@ -80,11 +118,7 @@ namespace VN
         {
             if (!string.IsNullOrEmpty(message) && message[0] == '@')
             {
-                if (TryProcessCommandLine(message, out var routine))
-                {
-                    if (routine != null) yield return routine;
-                    yield break;
-                }
+                if (TryProcessCommandLine(message, out var routine)) { if (routine != null) yield return routine; yield break; }
             }
 
             if (centerText) centerText.gameObject.SetActive(false);
@@ -93,7 +127,7 @@ namespace VN
             if (nameText) nameText.text = string.Empty;
             if (bodyText)
             {
-                yield return Typewriter(bodyText, message ?? string.Empty);
+                yield return Typewriter(bodyText, ExpandVars(message ?? string.Empty));
                 yield return WaitForClick();
             }
         }
@@ -102,18 +136,14 @@ namespace VN
         {
             if (!string.IsNullOrEmpty(message) && message[0] == '@')
             {
-                if (TryProcessCommandLine(message, out var routine))
-                {
-                    if (routine != null) yield return routine;
-                    yield break;
-                }
+                if (TryProcessCommandLine(message, out var routine)) { if (routine != null) yield return routine; yield break; }
             }
 
             if (dialoguePanel) dialoguePanel.gameObject.SetActive(false);
             if (centerText)
             {
                 centerText.gameObject.SetActive(true);
-                centerText.text = message ?? string.Empty;
+                centerText.text = ExpandVars(message ?? string.Empty);
             }
             yield return WaitForClick();
             if (centerText) centerText.gameObject.SetActive(false);
@@ -134,7 +164,7 @@ namespace VN
                 {
                     var btn = Instantiate(choiceButtonPrefab, choicesPanel);
                     var label = btn.GetComponentInChildren<TMP_Text>();
-                    if (label) label.text = op.text ?? "°¶";
+                    if (label) label.text = ExpandVars(op.text ?? "‚Ä¶");
 
                     string captured = op.id;
                     btn.onClick.AddListener(() =>
@@ -150,16 +180,81 @@ namespace VN
 
         public string GetChoice() => lastChoiceId;
 
-        // ===== ≥ª∫Œ ¿Ø∆ø =====
+        // ===== Ïù¥Î¶Ñ ÏûÖÎ†• Ìå®ÎÑê =====
+        public IEnumerator AskName(string key = "Player", string prompt = "Ïù¥Î¶ÑÏùÑ ÏûÖÎ†•ÌïòÏÑ∏Ïöî")
+        {
+            if (dialoguePanel) dialoguePanel.gameObject.SetActive(false);
 
+            if (!nameInputPanel || !nameInputField || !nameConfirmButton)
+            {
+                Debug.LogWarning("[VN] Name Input references are not assigned.");
+                SetVar(key, GetVar(key));
+                yield break;
+            }
+
+            // Ìå®ÎÑê ÎùÑÏö∞Í∏∞
+            nameInputPanel.gameObject.SetActive(true);
+
+            // ÌîÑÎ°¨ÌîÑÌä∏Î•º Ï§ëÏïô ÌÖçÏä§Ìä∏Î°ú ÏïàÎÇ¥
+            if (centerText)
+            {
+                centerText.gameObject.SetActive(true);
+                centerText.text = prompt;
+            }
+
+            // Í∏∞Î≥∏Í∞í Ï±ÑÏö∞Í≥† ÏûêÎèô Ìè¨Ïª§Ïä§
+            nameInputField.text = GetVar(key);
+            yield return null; // Ìïú ÌîÑÎ†àÏûÑ Ïâ¨Í≥†
+            var es = EventSystem.current;
+            if (es != null)
+            {
+                es.SetSelectedGameObject(null);
+                es.SetSelectedGameObject(nameInputField.gameObject);
+            }
+            nameInputField.caretPosition = nameInputField.text.Length;
+            nameInputField.selectionAnchorPosition = 0;
+            nameInputField.selectionFocusPosition = nameInputField.text.Length;
+            nameInputField.ActivateInputField();   // ‚Üê ÌÇ§Î≥¥Îìú ÏûÖÎ†• Ï¶âÏãú Í∞ÄÎä•
+
+            bool submitted = false;
+            void OnSubmit()
+            {
+                var val = nameInputField.text;
+                if (string.IsNullOrWhiteSpace(val)) val = "ÌîåÎ†àÏù¥Ïñ¥";
+                SetVar(key, val);
+                if (string.Equals(key, "Player", StringComparison.OrdinalIgnoreCase))
+                {
+                    PlayerPrefs.SetString(PP_PLAYER, val);
+                    PlayerPrefs.Save();
+                }
+                submitted = true;
+            }
+
+            nameConfirmButton.onClick.AddListener(OnSubmit);
+            nameInputField.onSubmit.AddListener(_ => OnSubmit());   // Enter Ï≤òÎ¶¨
+            nameInputField.onEndEdit.AddListener(_ =>
+            {
+                // Î™®Î∞îÏùº/ÏùºÎ∂Ä ÌôòÍ≤ΩÏóêÏÑú onSubmitÏù¥ Ïïà Ïò¨ Îïå ÎåÄÎπÑ
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+                    OnSubmit();
+            });
+
+            while (!submitted) yield return null;
+
+            nameConfirmButton.onClick.RemoveListener(OnSubmit);
+            nameInputField.onSubmit.RemoveListener(_ => OnSubmit());
+            nameInputField.onEndEdit.RemoveAllListeners();
+
+            nameInputPanel.gameObject.SetActive(false);
+            if (centerText) centerText.gameObject.SetActive(false);
+            if (dialoguePanel) dialoguePanel.gameObject.SetActive(true);
+        }
+
+        // ===== ÎÇ¥Î∂Ä Ïú†Ìã∏ =====
         IEnumerator Typewriter(TMP_Text target, string text)
         {
             target.text = string.Empty;
-            if (typewriterSpeed <= 0f)
-            {
-                target.text = text;
-                yield break;
-            }
+            if (typewriterSpeed <= 0f) { target.text = text; yield break; }
 
             for (int i = 0; i <= text.Length; i++)
             {
@@ -180,22 +275,32 @@ namespace VN
                 clickRequested = true;
         }
 
-        // ===== ƒø∏«µÂ ∆ƒº≠ =====
-        // π›»Ø: √≥∏Æ«ﬂ¿∏∏È true (routine¿Ã ¿÷¿ª ºˆµµ/æ¯¿ª ºˆµµ), ∏∏£∏È false
-        // ¡ˆø¯: 
+        string ExpandVars(string input)
+        {
+            if (string.IsNullOrEmpty(input)) return string.Empty;
+            return VarToken.Replace(input, m =>
+            {
+                var key = m.Groups[1].Value;
+                return GetVar(key);
+            });
+        }
+
+        // ===== Ïª§Îß®Îìú ÌååÏÑú =====
         // @bgm play <path> [volume] [fadeSec] [loop]
         // @bgm stop [fadeSec]
         // @sfx <path> [volume] [pitch]
         // @wait <seconds>
         // @center <text...>
-        // @dialogue
+        // @dialogue [on|off]
         // @bg <spritePath>
+        // @ch show <left|center|right> <spritePath>
+        // @ch hide <left|center|right|all>
+        // @set <Key> <Value...>
+        // @askname [Key] [Prompt...]
         bool TryProcessCommandLine(string line, out IEnumerator routine)
         {
             routine = null;
-
-            if (string.IsNullOrWhiteSpace(line) || line[0] != '@')
-                return false;
+            if (string.IsNullOrWhiteSpace(line) || line[0] != '@') return false;
 
             var parts = line.Substring(1).Trim().Split(' ');
             if (parts.Length == 0) return false;
@@ -211,15 +316,14 @@ namespace VN
                             string sub = parts[1].ToLowerInvariant();
                             if (sub == "play")
                             {
-                                // @bgm play <path> [volume] [fadeSec] [loop]
-                                string path = (parts.Length >= 3) ? JoinRest(parts, 2) : null;
-                                float volume = -1f, fade = 0.5f;
-                                bool loop = true;
-                                ParseTail(parts, ref loop, ref fade, ref volume);
-
-                                if (!string.IsNullOrEmpty(path) && VNAudio.Instance)
-                                    VNAudio.Instance.PlayBgm(path, volume, fade, loop);
-
+                                if (parts.Length < 3) { Debug.LogWarning("[VN] @bgm play: path missing"); return true; }
+                                string path = parts[2];
+                                float volume = -1f, fade = 0.5f; bool loop = true;
+                                if (parts.Length >= 4 && TryFloat(parts[3], out var v)) volume = v;
+                                if (parts.Length >= 5 && TryFloat(parts[4], out var f)) fade = f;
+                                if (parts.Length >= 6 && bool.TryParse(parts[5], out var b)) loop = b;
+                                if (VNAudio.Instance) VNAudio.Instance.PlayBgm(path, volume, fade, loop);
+                                else Debug.LogWarning("[VN] VNAudio not found in scene.");
                                 return true;
                             }
                             else if (sub == "stop")
@@ -227,63 +331,111 @@ namespace VN
                                 float fade = 0.5f;
                                 if (parts.Length >= 3 && TryFloat(parts[2], out var f)) fade = f;
                                 if (VNAudio.Instance) VNAudio.Instance.StopBgm(fade);
+                                else Debug.LogWarning("[VN] VNAudio not found in scene.");
                                 return true;
                             }
                         }
                         break;
                     }
-
                 case "sfx":
                     {
-                        // @sfx <path> [volume] [pitch]
-                        if (parts.Length >= 2)
-                        {
-                            string path = JoinRest(parts, 1);
-                            float volume = -1f;
-                            float pitch = 1f;
-                            ParseTail(parts, ref pitch, ref volume);
-                            if (VNAudio.Instance && !string.IsNullOrEmpty(path))
-                                VNAudio.Instance.PlaySfx(path, volume, pitch);
-                            return true;
-                        }
-                        break;
+                        if (parts.Length < 2) { Debug.LogWarning("[VN] @sfx: path missing"); return true; }
+                        string path = parts[1];
+                        float volume = -1f, pitch = 1f;
+                        if (parts.Length >= 3 && TryFloat(parts[2], out var v)) volume = v;
+                        if (parts.Length >= 4 && TryFloat(parts[3], out var p)) pitch = p;
+                        if (VNAudio.Instance) VNAudio.Instance.PlaySfx(path, volume, pitch);
+                        else Debug.LogWarning("[VN] VNAudio not found in scene.");
+                        return true;
                     }
-
                 case "wait":
                     {
-                        // @wait <seconds>
-                        if (parts.Length >= 2 && TryFloat(parts[1], out var sec))
-                            routine = WaitSeconds(sec);
-                        else
-                            routine = null;
+                        if (parts.Length >= 2 && TryFloat(parts[1], out var sec)) routine = WaitSeconds(sec);
                         return true;
                     }
-
                 case "center":
                     {
-                        // @center <text...>
                         string text = line.Substring("@center".Length + 1).Trim();
-                        routine = CenterRoutine(text);
+                        routine = CenterRoutine(ExpandVars(text));
                         return true;
                     }
-
                 case "dialogue":
                     {
-                        // @dialogue (¡ÔΩ√ ¿¸»Ø)
-                        if (centerText) centerText.gameObject.SetActive(false);
-                        if (dialoguePanel) dialoguePanel.gameObject.SetActive(true);
+                        bool on = true;
+                        if (parts.Length >= 2 && parts[1].ToLowerInvariant() == "off") on = false;
+                        if (centerText && on) centerText.gameObject.SetActive(false);
+                        if (dialoguePanel) dialoguePanel.gameObject.SetActive(on);
                         return true;
                     }
-
                 case "bg":
                     {
-                        // @bg <spritePath>
                         if (parts.Length >= 2)
                         {
-                            string path = JoinRest(parts, 1);
+                            string path = parts[1];
                             var sprite = Resources.Load<Sprite>(path);
-                            if (!sprite)
-                                Debug.LogWarning($"[VN] BG sprite not found: {path}");
+                            if (!sprite) Debug.LogWarning($"[VN] BG sprite not found: {path}");
+                            else if (bgImage) bgImage.sprite = sprite;
+                        }
+                        else Debug.LogWarning("[VN] @bg: path missing");
+                        return true;
+                    }
+                case "ch":
+                    {
+                        if (parts.Length < 3) { Debug.LogWarning("[VN] @ch usage: show|hide <left|center|right|all> [spritePath]"); return true; }
+                        var action = parts[1].ToLowerInvariant();
+                        var slot = parts[2].ToLowerInvariant();
+
+                        if (action == "show")
+                        {
+                            if (parts.Length < 4) { Debug.LogWarning("[VN] @ch show: sprite path missing"); return true; }
+                            string path = parts[3];
+                            var sprite = Resources.Load<Sprite>(path);
+                            if (!sprite) { Debug.LogWarning($"[VN] Portrait sprite not found: {path}"); return true; }
+                            var img = GetSlot(slot);
+                            if (!img) { Debug.LogWarning($"[VN] Unknown portrait slot: {slot}"); return true; }
+                            img.sprite = sprite; ShowPortrait(img, true);
+                            return true;
+                        }
+                        else if (action == "hide")
+                        {
+                            if (slot == "all") { ShowPortrait(charLeft, false); ShowPortrait(charCenter, false); ShowPortrait(charRight, false); return true; }
+                            var img = GetSlot(slot);
+                            if (!img) { Debug.LogWarning($"[VN] Unknown portrait slot: {slot}"); return true; }
+                            ShowPortrait(img, false);
+                            return true;
+                        }
+                        Debug.LogWarning("[VN] @ch: unknown action"); return true;
+                    }
+                case "set":
+                    {
+                        if (parts.Length < 3) { Debug.LogWarning("[VN] @set usage: @set <Key> <Value>"); return true; }
+                        string key = parts[1];
+                        string value = line.Substring(line.IndexOf(key, StringComparison.Ordinal) + key.Length).Trim();
+                        SetVar(key, value);
+                        if (string.Equals(key, "Player", StringComparison.OrdinalIgnoreCase))
+                        {
+                            PlayerPrefs.SetString(PP_PLAYER, value);
+                            PlayerPrefs.Save();
+                        }
+                        return true;
+                    }
+                case "askname":
+                    {
+                        string key = "Player";
+                        string prompt = "Ïù¥Î¶ÑÏùÑ ÏûÖÎ†•ÌïòÏÑ∏Ïöî";
+                        if (parts.Length >= 2) key = parts[1];
+                        if (parts.Length >= 3) prompt = line.Substring(line.IndexOf(parts[1], StringComparison.Ordinal) + parts[1].Length).Trim();
+                        routine = AskName(key, prompt);
+                        return true;
+                    }
+                case "bh":
+                    {
+                        Debug.LogWarning("[VN] '@bh' is a typo. Use '@bg'. Auto-converting.");
+                        if (parts.Length >= 2)
+                        {
+                            string path = parts[1];
+                            var sprite = Resources.Load<Sprite>(path);
+                            if (!sprite) Debug.LogWarning($"[VN] BG sprite not found: {path}");
                             else if (bgImage) bgImage.sprite = sprite;
                         }
                         return true;
@@ -291,56 +443,54 @@ namespace VN
             }
 
             Debug.LogWarning($"[VN] Unknown command: {line}");
-            return true; // ∏∏£¥¬ ƒø∏«µÂ∂Ûµµ °Æ√≥∏Æµ °Ø¿∏∑Œ ∫∏∞Ì ∫ªπÆ √‚∑¬ ∏∑¿Ω
+            return true;
         }
 
-        // ----- ∆ƒº≠ ¿Ø∆ø -----
+        // ----- Ìè¨Ìä∏Î†àÏù¥Ìä∏ Ïú†Ìã∏ -----
+        void EnsurePortrait(ref Image img, string name)
+        {
+            if (img) return;
+            if (!charaLayer) return;
+
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            go.transform.SetParent(charaLayer, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.5f, 0f);
+            rt.anchorMax = new Vector2(0.5f, 0f);
+            rt.pivot = new Vector2(0.5f, 0f);
+            rt.anchoredPosition = Vector2.zero;
+            img = go.GetComponent<Image>();
+            img.preserveAspect = true;
+            img.raycastTarget = false;
+        }
+
+        Image GetSlot(string slot)
+        {
+            switch (slot)
+            {
+                case "left": return charLeft;
+                case "center": return charCenter;
+                case "right": return charRight;
+            }
+            return null;
+        }
+
+        void ShowPortrait(Image img, bool on)
+        {
+            if (!img) return;
+            img.gameObject.SetActive(on);
+            var rt = img.rectTransform;
+            if (img == charLeft) rt.anchoredPosition = new Vector2(-420f, 0f);
+            if (img == charCenter) rt.anchoredPosition = new Vector2(0f, 0f);
+            if (img == charRight) rt.anchoredPosition = new Vector2(420f, 0f);
+            if (on && img.sprite) rt.sizeDelta = new Vector2(720f, 900f);
+        }
+
+        // ----- ÌååÏÑú/ÏΩîÎ£®Ìã¥ Ïú†Ìã∏ -----
         static bool TryFloat(string s, out float v)
             => float.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out v);
 
-        static string JoinRest(string[] parts, int startIndex)
-        {
-            if (startIndex >= parts.Length) return string.Empty;
-            return string.Join(" ", parts, startIndex, parts.Length - startIndex).Trim();
-        }
-
-        // Overload 1: loop(bool), fade(float), volume(float)
-        static void ParseTail(string[] parts, ref bool loop, ref float fade, ref float volume)
-        {
-            for (int i = parts.Length - 1; i >= 0; --i)
-            {
-                var t = parts[i].ToLowerInvariant();
-                if (t == "true" || t == "false")
-                {
-                    if (bool.TryParse(t, out var b)) { loop = b; return; }
-                }
-                else if (TryFloat(t, out var f))
-                {
-                    if (fade < 0f || Mathf.Approximately(fade, 0.5f)) { fade = f; }
-                    else { volume = f; }
-                }
-            }
-        }
-
-        // Overload 2: pitch(float), volume(float)
-        static void ParseTail(string[] parts, ref float pitch, ref float volume)
-        {
-            int found = 0;
-            for (int i = parts.Length - 1; i >= 0; --i)
-            {
-                if (TryFloat(parts[i], out var f))
-                {
-                    if (found == 0) { pitch = f; found++; }
-                    else if (found == 1) { volume = f; break; }
-                }
-            }
-        }
-
-        // ----- ∫∏¡∂ ƒ⁄∑Á∆æ -----
-        static IEnumerator WaitSeconds(float sec)
-        {
-            yield return new WaitForSecondsRealtime(sec);
-        }
+        static IEnumerator WaitSeconds(float sec) => new WaitForSecondsRealtime(sec);
 
         IEnumerator CenterRoutine(string text)
         {
