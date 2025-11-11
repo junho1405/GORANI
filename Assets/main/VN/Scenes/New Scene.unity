@@ -1025,14 +1025,15 @@ MonoBehaviour:
   charRight: {fileID: 0}
   nameText: {fileID: 863170573}
   bodyText: {fileID: 1800466714}
+  dialoguePanel: {fileID: 1378360707}
+  centerText: {fileID: 1894749872}
   choicesPanel: {fileID: 1332531178}
   choiceButtonPrefab: {fileID: 4309374757476503700, guid: 1524dd5f049b1cf43880fac1de81ca2b, type: 3}
   typewriterSpeed: 0.02
-  dialoguePanel: {fileID: 1378360707}
-  centerText: {fileID: 1894749872}
   nameInputPanel: {fileID: 218233397}
   nameInputField: {fileID: 1579304578}
   nameConfirmButton: {fileID: 1406258678}
+  fadeOverlay: {fileID: 0}
   scriptBehaviour: {fileID: 1275073350}
   autoStart: 1
 --- !u!1 &1786036191
@@ -1460,7 +1461,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: New Text
+  m_text: 
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: cd515c3f8dc0ebc42b7360b257fd9073, type: 2}
   m_sharedMaterial: {fileID: 714192549605047084, guid: cd515c3f8dc0ebc42b7360b257fd9073, type: 2}
@@ -1627,6 +1628,10 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: 258822364832434369, guid: 6f56670cd8644224ea04bcf768420a23, type: 3}
+      propertyPath: m_text
+      value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 258822364832434369, guid: 6f56670cd8644224ea04bcf768420a23, type: 3}
       propertyPath: m_fontSize
       value: 72
       objectReference: {fileID: 0}
@@ -1701,6 +1706,10 @@ PrefabInstance:
     - target: {fileID: 2470419568469487606, guid: 6f56670cd8644224ea04bcf768420a23, type: 3}
       propertyPath: m_Name
       value: Canvas
+      objectReference: {fileID: 0}
+    - target: {fileID: 2470419568469487606, guid: 6f56670cd8644224ea04bcf768420a23, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2672229442927124631, guid: 6f56670cd8644224ea04bcf768420a23, type: 3}
       propertyPath: m_AnchorMax.x
@@ -1896,8 +1905,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8497157638585691388, guid: 6f56670cd8644224ea04bcf768420a23, type: 3}
       propertyPath: m_text
-      value: "\uC774\uAC83\uC740 \uB300\uC0AC\uC601\uC5ED\uC774\uBA70 \uBCF4\uC774\uB294
-        \uB300\uB85C \uD14C\uC2A4\uD2B8 \uD558\uC2DC\uBA74 \uB429\uB2C8\uB2E4."
+      value: 
       objectReference: {fileID: 0}
     - target: {fileID: 8497157638585691388, guid: 6f56670cd8644224ea04bcf768420a23, type: 3}
       propertyPath: m_fontSize
@@ -1906,7 +1914,7 @@ PrefabInstance:
     - target: {fileID: 8497157638585691388, guid: 6f56670cd8644224ea04bcf768420a23, type: 3}
       propertyPath: m_fontAsset
       value: 
-      objectReference: {fileID: 11400000, guid: ecdee702944962e4293ad08e80821d5a, type: 2}
+      objectReference: {fileID: 11400000, guid: cd515c3f8dc0ebc42b7360b257fd9073, type: 2}
     - target: {fileID: 8497157638585691388, guid: 6f56670cd8644224ea04bcf768420a23, type: 3}
       propertyPath: m_fontStyle
       value: 0
@@ -1918,7 +1926,7 @@ PrefabInstance:
     - target: {fileID: 8497157638585691388, guid: 6f56670cd8644224ea04bcf768420a23, type: 3}
       propertyPath: m_sharedMaterial
       value: 
-      objectReference: {fileID: 7454930262832540141, guid: ecdee702944962e4293ad08e80821d5a, type: 2}
+      objectReference: {fileID: 714192549605047084, guid: cd515c3f8dc0ebc42b7360b257fd9073, type: 2}
     - target: {fileID: 8497157638585691388, guid: 6f56670cd8644224ea04bcf768420a23, type: 3}
       propertyPath: m_TextWrappingMode
       value: 0
