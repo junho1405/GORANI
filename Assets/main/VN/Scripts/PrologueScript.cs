@@ -111,10 +111,11 @@ namespace VN
         public override IEnumerator Define(VNEngine vn)
         {
             // BG 즉시 전환
+            yield return vn.Line("@bg fade BG/경고 1.0");
+            yield return vn.Say("", "");
             yield return vn.Line("@bg BG/검은화면");
 
             // BGM 시작
-            yield return vn.Line("@bgm play BGM/1.harusora 0.7 0.6 true");
 
             // 이름 입력
 
